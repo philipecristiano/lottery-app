@@ -1,0 +1,604 @@
+{% extends 'base.html' %}
+
+{% block title %}Histórico - Loteria Inteligente{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-lg-10 mx-auto">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1>Histórico de Jogos</h1>
+            <div class="dropdown">
+                <button class="btn btn-primary dropdown-toggle" type="button" id="filterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    {% if selected_lottery %}{{ games[selected_lottery].name }}{% else %}Todos os Jogos{% endif %}
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="filterDropdown">
+                    <li><a class="dropdown-item {% if not selected_lottery %}active{% endif %}" href="{{ url_for('views.history') }}">Todos os Jogos</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    {% for code, game in games.items() %}
+                    <li><a class="dropdown-item {% if code == selected_lottery %}active{% endif %}" href="{{ url_for('views.history', lottery=code) }}">{{ game.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Seus Jogos</h5>
+                    <div>
+                        <button id="refreshHistory" class="btn btn-sm btn-light">
+                            <i class="bi bi-arrow-clockwise"></i> Atualizar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="historyContent">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Carregando histórico...</span>
+                        </div>
+                        <p class="mt-2">Carregando seu histórico de jogos...</p>
+                    </div>
+                </div>
+                
+                <div id="pagination" class="d-flex justify-content-center mt-4"></div>
+                
+                <div id="historyStats" class="mt-4 d-none">
+                    <hr>
+                    <h5 class="mb-3">Estatísticas do Histórico</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title">Desempenho Geral</h6>
+                                    <canvas id="performanceChart" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title">Números Mais Jogados</h6>
+                                    <canvas id="numbersChart" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="noHistoryMessage" class="text-center py-4 d-none">
+                    <i class="bi bi-clock-history fs-1 text-muted"></i>
+                    <p class="mt-2">Você ainda não tem jogos no histórico.</p>
+                    <a href="{{ url_for('views.generate') }}" class="btn btn-primary mt-2">
+                        <i class="bi bi-magic"></i> Gerar Jogos
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const historyContent = document.getElementById('historyContent');
+        const historyStats = document.getElementById('historyStats');
+        const noHistoryMessage = document.getElementById('noHistoryMessage');
+        const paginationContainer = document.getElementById('pagination');
+        const refreshButton = document.getElementById('refreshHistory');
+        
+        let currentPage = 1;
+        const itemsPerPage = 10;
+        let totalItems = 0;
+        let allHistory = [];
+        
+        // Carregar histórico inicial
+        loadHistory();
+        
+        // Configurar botão de atualização
+        refreshButton.addEventListener('click', function() {
+            loadHistory();
+        });
+        
+        function loadHistory() {
+            historyContent.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Carregando histórico...</span>
+                    </div>
+                    <p class="mt-2">Carregando seu histórico de jogos...</p>
+                </div>
+            `;
+            
+            // Parâmetros de filtro
+            const params = new URLSearchParams();
+            {% if selected_lottery %}
+            params.append('lottery', '{{ selected_lottery }}');
+            {% endif %}
+            
+            // Buscar histórico
+            fetch(`/api/history?${params.toString()}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        historyContent.innerHTML = `
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-triangle"></i> ${data.error}
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    allHistory = data.history || [];
+                    totalItems = allHistory.length;
+                    
+                    if (totalItems === 0) {
+                        historyContent.innerHTML = '';
+                        noHistoryMessage.classList.remove('d-none');
+                        historyStats.classList.add('d-none');
+                        paginationContainer.innerHTML = '';
+                        return;
+                    }
+                    
+                    noHistoryMessage.classList.add('d-none');
+                    renderHistoryPage(1);
+                    renderPagination();
+                    
+                    // Renderizar estatísticas se houver jogos suficientes
+                    if (totalItems >= 5) {
+                        historyStats.classList.remove('d-none');
+                        renderHistoryStats(allHistory);
+                    } else {
+                        historyStats.classList.add('d-none');
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar histórico:', error);
+                    historyContent.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle"></i> Erro ao carregar histórico. Por favor, tente novamente.
+                        </div>
+                    `;
+                });
+        }
+        
+        function renderHistoryPage(page) {
+            currentPage = page;
+            const start = (page - 1) * itemsPerPage;
+            const end = Math.min(start + itemsPerPage, totalItems);
+            const pageItems = allHistory.slice(start, end);
+            
+            if (pageItems.length === 0) {
+                historyContent.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Nenhum jogo encontrado para os filtros selecionados.
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = `
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Loteria</th>
+                                <th>Concurso</th>
+                                <th>Números</th>
+                                <th>Acertos</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            pageItems.forEach(item => {
+                // Processar dados do histórico
+                const lotteryName = item.lottery_type ? (window.games && window.games[item.lottery_type] ? window.games[item.lottery_type].name : item.lottery_type.toUpperCase()) : 'Desconhecido';
+                const date = new Date(item.date_played).toLocaleDateString('pt-BR');
+                
+                // Processar números jogados
+                let playedNumbers = [];
+                try {
+                    playedNumbers = JSON.parse(item.played_numbers);
+                } catch (e) {
+                    console.error('Erro ao processar números jogados:', e);
+                }
+                
+                // Processar números oficiais
+                let officialNumbers = [];
+                try {
+                    if (item.official_numbers) {
+                        officialNumbers = JSON.parse(item.official_numbers);
+                    }
+                } catch (e) {
+                    console.error('Erro ao processar números oficiais:', e);
+                }
+                
+                // Determinar classe de destaque baseada nos acertos
+                let rowClass = '';
+                if (item.hits) {
+                    if (item.hits >= 4) {
+                        rowClass = 'table-success';
+                    } else if (item.hits >= 2) {
+                        rowClass = 'table-info';
+                    }
+                }
+                
+                html += `
+                    <tr class="${rowClass}">
+                        <td>${date}</td>
+                        <td>${lotteryName}</td>
+                        <td>${item.contest_number || '-'}</td>
+                        <td>
+                            <div class="d-flex flex-wrap">
+                                ${playedNumbers.map(num => 
+                                    `<span class="lottery-ball-sm ${item.lottery_type} ${officialNumbers.includes(num) ? 'hit' : ''}">${num}</span>`
+                                ).join('')}
+                            </div>
+                        </td>
+                        <td>
+                            ${item.hits !== null && item.hits !== undefined ? 
+                                `<span class="badge ${item.hits > 0 ? 'bg-success' : 'bg-secondary'}">${item.hits}</span>` : 
+                                '<span class="badge bg-warning">Pendente</span>'}
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary view-details" data-id="${item.id}">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            historyContent.innerHTML = html;
+            
+            // Configurar botões de detalhes
+            document.querySelectorAll('.view-details').forEach(button => {
+                button.addEventListener('click', function() {
+                    const id = this.getAttribute('data-id');
+                    showGameDetails(id);
+                });
+            });
+        }
+        
+        function renderPagination() {
+            if (totalItems <= itemsPerPage) {
+                paginationContainer.innerHTML = '';
+                return;
+            }
+            
+            const totalPages = Math.ceil(totalItems / itemsPerPage);
+            let html = '<nav><ul class="pagination">';
+            
+            // Botão anterior
+            html += `
+                <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" data-page="${currentPage - 1}" aria-label="Anterior">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+            `;
+            
+            // Páginas
+            for (let i = 1; i <= totalPages; i++) {
+                html += `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `;
+            }
+            
+            // Botão próximo
+            html += `
+                <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="#" data-page="${currentPage + 1}" aria-label="Próximo">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+            `;
+            
+            html += '</ul></nav>';
+            paginationContainer.innerHTML = html;
+            
+            // Configurar eventos de clique
+            document.querySelectorAll('.pagination .page-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const page = parseInt(this.getAttribute('data-page'));
+                    if (page >= 1 && page <= totalPages) {
+                        renderHistoryPage(page);
+                    }
+                });
+            });
+        }
+        
+        function showGameDetails(id) {
+            const game = allHistory.find(item => item.id == id);
+            if (!game) return;
+            
+            // Processar dados do jogo
+            const lotteryName = game.lottery_type ? (window.games && window.games[game.lottery_type] ? window.games[game.lottery_type].name : game.lottery_type.toUpperCase()) : 'Desconhecido';
+            const date = new Date(game.date_played).toLocaleDateString('pt-BR');
+            
+            // Processar números
+            let playedNumbers = [];
+            try {
+                playedNumbers = JSON.parse(game.played_numbers);
+            } catch (e) {
+                console.error('Erro ao processar números jogados:', e);
+            }
+            
+            let officialNumbers = [];
+            try {
+                if (game.official_numbers) {
+                    officialNumbers = JSON.parse(game.official_numbers);
+                }
+            } catch (e) {
+                console.error('Erro ao processar números oficiais:', e);
+            }
+            
+            // Processar trevos
+            let playedTrevos = [];
+            try {
+                if (game.played_trevos) {
+                    playedTrevos = JSON.parse(game.played_trevos);
+                }
+            } catch (e) {
+                console.error('Erro ao processar trevos jogados:', e);
+            }
+            
+            let officialTrevos = [];
+            try {
+                if (game.official_trevos) {
+                    officialTrevos = JSON.parse(game.official_trevos);
+                }
+            } catch (e) {
+                console.error('Erro ao processar trevos oficiais:', e);
+            }
+            
+            // Processar premiação
+            let prizeInfo = [];
+            try {
+                if (game.prize_info) {
+                    prizeInfo = JSON.parse(game.prize_info);
+                }
+            } catch (e) {
+                console.error('Erro ao processar informações de premiação:', e);
+            }
+            
+            // Criar modal de detalhes
+            const modalId = `gameModal${id}`;
+            let modalHtml = `
+                <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}Label" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="${modalId}Label">Detalhes do Jogo - ${lotteryName}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <p><strong>Data:</strong> ${date}</p>
+                                        <p><strong>Concurso:</strong> ${game.contest_number || 'Não informado'}</p>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <p><strong>Acertos:</strong> ${game.hits !== null && game.hits !== undefined ? game.hits : 'Pendente'}</p>
+                                        ${game.trevo_hits !== null && game.trevo_hits !== undefined ? 
+                                            `<p><strong>Acertos de Trevos:</strong> ${game.trevo_hits}</p>` : ''}
+                                        ${game.time_hit !== null && game.time_hit !== undefined ? 
+                                            `<p><strong>Acerto do Time:</strong> ${game.time_hit ? 'Sim' : 'Não'}</p>` : ''}
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <h6>Seus Números</h6>
+                                        <div class="d-flex flex-wrap">
+                                            ${playedNumbers.map(num => 
+                                                `<span class="lottery-ball ${game.lottery_type} ${officialNumbers.includes(num) ? 'hit' : ''}">${num}</span>`
+                                            ).join('')}
+                                        </div>
+                                        
+                                        ${playedTrevos.length > 0 ? `
+                                            <h6 class="mt-3">Seus Trevos</h6>
+                                            <div class="d-flex flex-wrap">
+                                                ${playedTrevos.map(num => 
+                                                    `<span class="lottery-trevo ${officialTrevos.includes(num) ? 'hit' : ''}">${num}</span>`
+                                                ).join('')}
+                                            </div>
+                                        ` : ''}
+                                        
+                                        ${game.played_time ? `
+                                            <h6 class="mt-3">Seu Time</h6>
+                                            <p>${game.played_time} ${game.time_hit ? '<span class="badge bg-success">Acertou!</span>' : ''}</p>
+                                        ` : ''}
+                                    </div>
+                                    
+                                    <div class="col-md-6">
+                                        <h6>Números Sorteados</h6>
+                                        ${officialNumbers.length > 0 ? `
+                                            <div class="d-flex flex-wrap">
+                                                ${officialNumbers.map(num => 
+                                                    `<span class="lottery-ball ${game.lottery_type} ${playedNumbers.includes(num) ? 'hit' : ''}">${num}</span>`
+                                                ).join('')}
+                                            </div>
+                                        ` : '<p class="text-muted">Resultado não disponível</p>'}
+                                        
+                                        ${officialTrevos.length > 0 ? `
+                                            <h6 class="mt-3">Trevos Sorteados</h6>
+                                            <div class="d-flex flex-wrap">
+                                                ${officialTrevos.map(num => 
+                                                    `<span class="lottery-trevo ${playedTrevos.includes(num) ? 'hit' : ''}">${num}</span>`
+                                                ).join('')}
+                                            </div>
+                                        ` : ''}
+                                        
+                                        ${game.official_time ? `
+                                            <h6 class="mt-3">Time Sorteado</h6>
+                                            <p>${game.official_time}</p>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                                
+                                ${prizeInfo.length > 0 ? `
+                                    <div class="card mb-3">
+                                        <div class="card-header bg-success text-white">
+                                            <h6 class="mb-0">Informações de Premiação</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Acertos</th>
+                                                            <th>Ganhadores</th>
+                                                            <th>Prêmio (R$)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        ${prizeInfo.map(prize => `
+                                                            <tr>
+                                                                <td>${prize.descricao}</td>
+                                                                <td>${prize.ganhadores}</td>
+                                                                <td>${typeof prize.valorPremio === 'number' ? 
+                                                                    prize.valorPremio.toLocaleString('pt-BR', {minimumFractionDigits: 2}) : 
+                                                                    prize.valorPremio}</td>
+                                                            </tr>
+                                                        `).join('')}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Adicionar modal ao documento
+            const modalContainer = document.createElement('div');
+            modalContainer.innerHTML = modalHtml;
+            document.body.appendChild(modalContainer);
+            
+            // Mostrar modal
+            const modal = new bootstrap.Modal(document.getElementById(modalId));
+            modal.show();
+            
+            // Configurar remoção do modal ao fechar
+            document.getElementById(modalId).addEventListener('hidden.bs.modal', function() {
+                document.body.removeChild(modalContainer);
+            });
+        }
+        
+        function renderHistoryStats(history) {
+            // Preparar dados para gráfico de desempenho
+            const hitCounts = {};
+            history.forEach(game => {
+                if (game.hits !== null && game.hits !== undefined) {
+                    hitCounts[game.hits] = (hitCounts[game.hits] || 0) + 1;
+                }
+            });
+            
+            const performanceLabels = Object.keys(hitCounts).sort((a, b) => a - b);
+            const performanceData = performanceLabels.map(hits => hitCounts[hits]);
+            
+            // Renderizar gráfico de desempenho
+            const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+            new Chart(performanceCtx, {
+                type: 'bar',
+                data: {
+                    labels: performanceLabels.map(hits => `${hits} acerto${hits !== '1' ? 's' : ''}`),
+                    datasets: [{
+                        label: 'Quantidade de Jogos',
+                        data: performanceData,
+                        backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Preparar dados para gráfico de números mais jogados
+            const numberCounts = {};
+            history.forEach(game => {
+                try {
+                    const numbers = JSON.parse(game.played_numbers);
+                    numbers.forEach(num => {
+                        numberCounts[num] = (numberCounts[num] || 0) + 1;
+                    });
+                } catch (e) {
+                    console.error('Erro ao processar números para estatísticas:', e);
+                }
+            });
+            
+            // Ordenar por frequência e pegar os 10 mais frequentes
+            const topNumbers = Object.entries(numberCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            const numbersLabels = topNumbers.map(item => item[0]);
+            const numbersData = topNumbers.map(item => item[1]);
+            
+            // Renderizar gráfico de números mais jogados
+            const numbersCtx = document.getElementById('numbersChart').getContext('2d');
+            new Chart(numbersCtx, {
+                type: 'bar',
+                data: {
+                    labels: numbersLabels,
+                    datasets: [{
+                        label: 'Frequência nos Jogos',
+                        data: numbersData,
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

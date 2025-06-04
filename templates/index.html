@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+
+{% block title %}Início - Loteria Inteligente{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto text-center">
+        <h1 class="display-4 mb-4">Bem-vindo à Loteria Inteligente</h1>
+        <p class="lead mb-5">
+            Análise estatística avançada e geração inteligente de jogos para aumentar suas chances nas loterias.
+        </p>
+    </div>
+</div>
+
+<div class="row mb-5">
+    <div class="col-lg-8 mx-auto">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Selecione uma Loteria</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    {% for code, game in games.items() %}
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100 lottery-card" data-lottery="{{ code }}">
+                            <div class="card-body d-flex flex-column">
+                                <h5 class="card-title">{{ game.name }}</h5>
+                                <p class="card-text text-muted">
+                                    {{ game.numbers }} números de {{ game.range.0 }} a {{ game.range.1 }}
+                                    {% if 'trevos' in game %}
+                                    <br>+ {{ game.trevos }} trevos de {{ game.trevos_range.0 }} a {{ game.trevos_range.1 }}
+                                    {% endif %}
+                                    {% if 'time_coracao' in game %}
+                                    <br>+ Time do Coração
+                                    {% endif %}
+                                </p>
+                                <div class="mt-auto">
+                                    <div class="btn-group w-100" role="group">
+                                        <a href="{{ url_for('views.analyze', lottery=code) }}" class="btn btn-outline-primary">
+                                            <i class="bi bi-graph-up"></i> Analisar
+                                        </a>
+                                        <a href="{{ url_for('views.generate', lottery=code) }}" class="btn btn-outline-success">
+                                            <i class="bi bi-magic"></i> Gerar
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card shadow">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Últimos Resultados</h5>
+            </div>
+            <div class="card-body">
+                <div id="latest-results">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Carregando...</span>
+                        </div>
+                        <p class="mt-2">Carregando últimos resultados...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Carregar últimos resultados
+        fetch('/api/latest-results')
+            .then(response => response.json())
+            .then(data => {
+                const resultsContainer = document.getElementById('latest-results');
+                if (data.results && data.results.length > 0) {
+                    let html = '<div class="row">';
+                    
+                    data.results.forEach(result => {
+                        html += `
+                            <div class="col-md-6 mb-4">
+                                <div class="card h-100">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">${result.name} - Concurso ${result.concurso}</h6>
+                                        <small class="text-muted">${result.data}</small>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="d-flex flex-wrap justify-content-center mb-2">
+                                        ${result.dezenas.map(num => 
+                                            `<span class="lottery-ball ${result.lottery_type}">${num}</span>`
+                                        ).join('')}
+                                        </div>
+                                        ${result.trevos ? `
+                                            <div class="d-flex flex-wrap justify-content-center mb-2">
+                                                <span class="me-2">Trevos:</span>
+                                                ${result.trevos.map(num => 
+                                                    `<span class="lottery-trevo">${num}</span>`
+                                                ).join('')}
+                                            </div>
+                                        ` : ''}
+                                        ${result.timeCoracao ? `
+                                            <div class="text-center mb-2">
+                                                <span>Time do Coração: <strong>${result.timeCoracao}</strong></span>
+                                            </div>
+                                        ` : ''}
+                                        <div class="mt-2">
+                                            <p class="mb-1"><strong>Premiação:</strong></p>
+                                            <ul class="list-unstyled">
+                                                ${result.premiacoes.map(premio => 
+                                                    `<li>${premio.descricao}: ${premio.ganhadores} ganhador(es) - R$ ${premio.valorPremio.toLocaleString('pt-BR')}</li>`
+                                                ).join('')}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div>';
+                    resultsContainer.innerHTML = html;
+                } else {
+                    resultsContainer.innerHTML = '<p class="text-center">Não foi possível carregar os resultados.</p>';
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao carregar resultados:', error);
+                document.getElementById('latest-results').innerHTML = 
+                    '<p class="text-center text-danger">Erro ao carregar os resultados. Por favor, tente novamente mais tarde.</p>';
+            });
+    });
+</script>
+{% endblock %}

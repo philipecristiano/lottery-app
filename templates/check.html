@@ -1,0 +1,311 @@
+{% extends 'base.html' %}
+
+{% block title %}Verificar Jogos - Loteria Inteligente{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-lg-8 mx-auto">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1>Verificação de Jogos</h1>
+            <div class="dropdown">
+                <button class="btn btn-primary dropdown-toggle" type="button" id="lotteryDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    {{ selected_game.name }}
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="lotteryDropdown">
+                    {% for code, game in games.items() %}
+                    <li><a class="dropdown-item {% if code == selected_lottery %}active{% endif %}" href="{{ url_for('views.check', lottery=code) }}">{{ game.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-8 mx-auto">
+        <div class="card shadow">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Verificar Jogo</h5>
+            </div>
+            <div class="card-body">
+                <form id="checkForm" action="{{ url_for('api.check_game') }}" method="POST">
+                    <input type="hidden" name="lottery" value="{{ selected_lottery }}">
+                    
+                    <div class="mb-3">
+                        <label for="contestNumber" class="form-label">Concurso</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="contestNumber" name="contest_number" placeholder="Número do concurso">
+                            <button class="btn btn-outline-secondary" type="button" id="latestContestBtn">Último</button>
+                        </div>
+                        <div class="form-text">Deixe em branco para verificar com o último concurso</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="numbers" class="form-label">Números Jogados</label>
+                        <input type="text" class="form-control" id="numbers" name="numbers" placeholder="Ex: 1, 2, 3, 4, 5, 6" required>
+                        <div class="form-text">Separe os números por vírgulas</div>
+                    </div>
+                    
+                    {% if 'trevos' in selected_game %}
+                    <div class="mb-3">
+                        <label for="trevos" class="form-label">Trevos</label>
+                        <input type="text" class="form-control" id="trevos" name="trevos" placeholder="Ex: 1, 2">
+                        <div class="form-text">Separe os trevos por vírgulas</div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if 'time_coracao' in selected_game %}
+                    <div class="mb-3">
+                        <label for="timeCoracao" class="form-label">Time do Coração</label>
+                        <input type="text" class="form-control" id="timeCoracao" name="time_coracao" placeholder="Ex: FLAMENGO">
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="saveToHistory" name="save_to_history" checked>
+                            <label class="form-check-label" for="saveToHistory">
+                                Salvar jogo no histórico
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-info btn-lg text-white">
+                            <i class="bi bi-check-circle"></i> Verificar Jogo
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Resultado da Verificação</h5>
+            </div>
+            <div class="card-body">
+                <div id="checkResult">
+                    <p class="text-center text-muted">Preencha o formulário e clique em "Verificar Jogo" para ver o resultado aqui.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('checkForm');
+        const checkResultContainer = document.getElementById('checkResult');
+        const latestContestBtn = document.getElementById('latestContestBtn');
+        
+        // Botão para usar o último concurso
+        latestContestBtn.addEventListener('click', function() {
+            document.getElementById('contestNumber').value = '';
+        });
+        
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Mostrar indicador de carregamento
+            checkResultContainer.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Verificando jogo...</span>
+                    </div>
+                    <p class="mt-2">Verificando seu jogo...</p>
+                </div>
+            `;
+            
+            // Processar números
+            const numbersInput = document.getElementById('numbers').value;
+            const numbers = numbersInput.split(',').map(num => parseInt(num.trim())).filter(num => !isNaN(num));
+            
+            if (numbers.length !== {{ selected_game.numbers }}) {
+                checkResultContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> Você deve informar exatamente {{ selected_game.numbers }} números válidos.
+                    </div>
+                `;
+                return;
+            }
+            
+            // Preparar dados
+            const data = {
+                lottery: '{{ selected_lottery }}',
+                contest_number: document.getElementById('contestNumber').value || null,
+                played_game: {
+                    numbers: numbers
+                },
+                save_to_history: document.getElementById('saveToHistory').checked
+            };
+            
+            // Adicionar trevos se aplicável
+            {% if 'trevos' in selected_game %}
+            const trevosInput = document.getElementById('trevos').value;
+            if (trevosInput) {
+                const trevos = trevosInput.split(',').map(num => parseInt(num.trim())).filter(num => !isNaN(num));
+                if (trevos.length !== {{ selected_game.trevos }}) {
+                    checkResultContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle"></i> Você deve informar exatamente {{ selected_game.trevos }} trevos válidos.
+                        </div>
+                    `;
+                    return;
+                }
+                data.played_game.trevos = trevos;
+            }
+            {% endif %}
+            
+            // Adicionar time do coração se aplicável
+            {% if 'time_coracao' in selected_game %}
+            const timeCoracao = document.getElementById('timeCoracao').value.trim();
+            if (timeCoracao) {
+                data.played_game.time_coracao = timeCoracao.toUpperCase();
+            }
+            {% endif %}
+            
+            // Enviar solicitação para verificar jogo
+            fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.error) {
+                    checkResultContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle"></i> ${result.error}
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Renderizar resultado da verificação
+                renderCheckResult(result);
+            })
+            .catch(error => {
+                console.error('Erro ao verificar jogo:', error);
+                checkResultContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> Erro ao verificar jogo. Por favor, tente novamente.
+                    </div>
+                `;
+            });
+        });
+        
+        // Função para renderizar o resultado da verificação
+        function renderCheckResult(result) {
+            const check = result.check_result;
+            const lotteryType = result.lottery;
+            
+            let html = `
+                <div class="alert ${check.hits > 0 ? 'alert-success' : 'alert-warning'} mb-4">
+                    <i class="${check.hits > 0 ? 'bi bi-trophy' : 'bi bi-emoji-frown'}"></i> 
+                    Você acertou <strong>${check.hits} ${check.hits === 1 ? 'número' : 'números'}</strong> no concurso ${result.contest_number}!
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h6>Seus Números</h6>
+                        <div class="d-flex flex-wrap">
+                            ${check.played_numbers.map(num => 
+                                `<span class="lottery-ball ${lotteryType} ${check.official_numbers.includes(num) ? 'hit' : ''}">${num}</span>`
+                            ).join('')}
+                        </div>
+                        
+                        ${check.played_trevos ? `
+                            <h6 class="mt-3">Seus Trevos</h6>
+                            <div class="d-flex flex-wrap">
+                                ${check.played_trevos.map(num => 
+                                    `<span class="lottery-trevo ${check.official_trevos && check.official_trevos.includes(num) ? 'hit' : ''}">${num}</span>`
+                                ).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        ${check.played_time ? `
+                            <h6 class="mt-3">Seu Time</h6>
+                            <p>${check.played_time} ${check.time_hit ? '<span class="badge bg-success">Acertou!</span>' : ''}</p>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>Números Sorteados</h6>
+                        <div class="d-flex flex-wrap">
+                            ${check.official_numbers.map(num => 
+                                `<span class="lottery-ball ${lotteryType} ${check.played_numbers.includes(num) ? 'hit' : ''}">${num}</span>`
+                            ).join('')}
+                        </div>
+                        
+                        ${check.official_trevos ? `
+                            <h6 class="mt-3">Trevos Sorteados</h6>
+                            <div class="d-flex flex-wrap">
+                                ${check.official_trevos.map(num => 
+                                    `<span class="lottery-trevo ${check.played_trevos && check.played_trevos.includes(num) ? 'hit' : ''}">${num}</span>`
+                                ).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        ${check.official_time ? `
+                            <h6 class="mt-3">Time Sorteado</h6>
+                            <p>${check.official_time}</p>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // Adicionar informações de premiação se disponíveis
+            if (check.prize_info && check.prize_info.length > 0) {
+                html += `
+                    <div class="card mb-4">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0">Informações de Premiação</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Acertos</th>
+                                            <th>Ganhadores</th>
+                                            <th>Prêmio (R$)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${check.prize_info.map(prize => `
+                                            <tr>
+                                                <td>${prize.descricao}</td>
+                                                <td>${prize.ganhadores}</td>
+                                                <td>${prize.valorPremio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Adicionar mensagem sobre o histórico
+            if (result.saved_to_history) {
+                html += `
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Este jogo foi salvo no seu histórico.
+                    </div>
+                `;
+            }
+            
+            checkResultContainer.innerHTML = html;
+        }
+    });
+</script>
+{% endblock %}

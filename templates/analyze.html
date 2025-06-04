@@ -1,0 +1,964 @@
+{% extends 'base.html' %}
+
+{% block title %}Análise Estatística - Loteria Inteligente{% endblock %}
+
+{% block extra_css %}
+<style>
+    .number-grid {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 5px;
+        margin-bottom: 20px;
+    }
+    
+    .number-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 40px;
+        border-radius: 5px;
+        font-weight: bold;
+        position: relative;
+    }
+    
+    .number-value {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        font-size: 0.7rem;
+        opacity: 0.8;
+    }
+    
+    .frequency-chart, .delay-chart {
+        height: 300px;
+        margin-bottom: 20px;
+    }
+    
+    .strategy-card {
+        border-left: 4px solid #0d6efd;
+        margin-bottom: 15px;
+    }
+    
+    .recommendation-item {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 10px 15px;
+        margin-bottom: 10px;
+        border-left: 4px solid #20c997;
+    }
+    
+    .hot-number {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .cold-number {
+        background-color: #0d6efd;
+        color: white;
+    }
+    
+    .delayed-number {
+        background-color: #fd7e14;
+        color: white;
+    }
+    
+    .distribution-chart {
+        height: 250px;
+        margin-bottom: 20px;
+    }
+    
+    .decade-chart {
+        height: 200px;
+        margin-bottom: 20px;
+    }
+    
+    .tab-content {
+        padding-top: 20px;
+    }
+    
+    .nav-tabs .nav-link.active {
+        font-weight: bold;
+        border-bottom: 3px solid #0d6efd;
+    }
+    
+    .stat-card {
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        transition: transform 0.3s;
+        height: 100%;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .stat-card .card-header {
+        border-radius: 10px 10px 0 0;
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+    
+    .pattern-badge {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 20px;
+        margin-right: 5px;
+        margin-bottom: 5px;
+        font-size: 0.85rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1>Análise Estatística</h1>
+            <div class="dropdown">
+                <button class="btn btn-primary dropdown-toggle" type="button" id="lotteryDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    {{ selected_game.name }}
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="lotteryDropdown">
+                    {% for code, game in games.items() %}
+                    <li><a class="dropdown-item {% if code == selected_lottery %}active{% endif %}" href="{{ url_for('views.analyze', lottery=code) }}">{{ game.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <ul class="nav nav-tabs" id="analysisTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="basic-tab" data-bs-toggle="tab" data-bs-target="#basic" type="button" role="tab" aria-controls="basic" aria-selected="true">
+                    Análise Básica
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab" aria-controls="advanced" aria-selected="false">
+                    Análise Avançada
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="strategy-tab" data-bs-toggle="tab" data-bs-target="#strategy" type="button" role="tab" aria-controls="strategy" aria-selected="false">
+                    Estratégias Recomendadas
+                </button>
+            </li>
+        </ul>
+        
+        <div class="tab-content" id="analysisTabsContent">
+            <!-- Aba de Análise Básica -->
+            <div class="tab-pane fade show active" id="basic" role="tabpanel" aria-labelledby="basic-tab">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">Frequência dos Números</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="frequencyGrid" class="number-grid"></div>
+                                <div id="frequencyChart" class="frequency-chart"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-warning text-dark">
+                                <h5 class="mb-0">Atraso dos Números</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="delayGrid" class="number-grid"></div>
+                                <div id="delayChart" class="delay-chart"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">Últimos Resultados</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="lastResults"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Aba de Análise Avançada -->
+            <div class="tab-pane fade" id="advanced" role="tabpanel" aria-labelledby="advanced-tab">
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Esta análise é baseada em dados históricos e padrões estatísticos. Utilize como referência para suas estratégias.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-light">
+                            <div class="card-body text-center">
+                                <div class="stat-value" id="avgEvenValue">-</div>
+                                <div class="stat-label">Média de Números Pares</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-light">
+                            <div class="card-body text-center">
+                                <div class="stat-value" id="avgOddValue">-</div>
+                                <div class="stat-label">Média de Números Ímpares</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-light">
+                            <div class="card-body text-center">
+                                <div class="stat-value" id="avgSumValue">-</div>
+                                <div class="stat-label">Soma Média dos Números</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-light">
+                            <div class="card-body text-center">
+                                <div class="stat-value" id="avgSequencesValue">-</div>
+                                <div class="stat-label">Média de Sequências</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">Top 10 Números Mais Frequentes</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="hotNumbersList"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0">Top 10 Números Mais Atrasados</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="delayedNumbersList"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">Distribuição Par/Ímpar</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="evenOddChart" class="distribution-chart"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-warning text-dark">
+                                <h5 class="mb-0">Distribuição por Dezenas</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="decadeChart" class="decade-chart"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-danger text-white">
+                                <h5 class="mb-0">Faixas de Soma</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="sumRangeChart" class="distribution-chart"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card shadow-sm">
+                            <div class="card-header bg-secondary text-white">
+                                <h5 class="mb-0">Padrões Identificados</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="patternsList"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Aba de Estratégias Recomendadas -->
+            <div class="tab-pane fade" id="strategy" role="tabpanel" aria-labelledby="strategy-tab">
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="alert alert-success">
+                            <i class="bi bi-lightbulb"></i> Com base na análise detalhada dos dados históricos, estas são as estratégias recomendadas para maximizar suas chances.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card shadow">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">Recomendações Estratégicas</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="recommendationsList"></div>
+                                
+                                <div class="mt-4">
+                                    <button id="generateOptimizedBtn" class="btn btn-success btn-lg">
+                                        <i class="bi bi-magic"></i> Gerar Jogo Otimizado
+                                    </button>
+                                    <p class="text-muted mt-2">
+                                        <small>Gera automaticamente um jogo com maior probabilidade de prêmio total com base nesta análise.</small>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm strategy-card">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0">Estratégia de Equilíbrio</h5>
+                            </div>
+                            <div class="card-body">
+                                <p>Esta estratégia busca um equilíbrio entre números pares e ímpares, com distribuição uniforme entre as dezenas.</p>
+                                <ul>
+                                    <li><strong>Pares/Ímpares:</strong> <span id="balancedEvenOdd">-</span></li>
+                                    <li><strong>Dezenas Recomendadas:</strong> <span id="balancedDecades">-</span></li>
+                                    <li><strong>Soma Ideal:</strong> <span id="balancedSum">-</span></li>
+                                </ul>
+                                <button class="btn btn-outline-info btn-sm mt-2 strategy-apply-btn" data-strategy="balanced">
+                                    Aplicar Estratégia
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card shadow-sm strategy-card">
+                            <div class="card-header bg-danger text-white">
+                                <h5 class="mb-0">Estratégia de Números Quentes</h5>
+                            </div>
+                            <div class="card-body">
+                                <p>Esta estratégia prioriza os números que mais saíram nos últimos sorteios.</p>
+                                <ul>
+                                    <li><strong>Números Recomendados:</strong> <span id="hotNumbersRecommended">-</span></li>
+                                    <li><strong>Complementar com:</strong> <span id="hotNumbersComplement">-</span></li>
+                                </ul>
+                                <button class="btn btn-outline-danger btn-sm mt-2 strategy-apply-btn" data-strategy="hot_numbers">
+                                    Aplicar Estratégia
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm strategy-card">
+                            <div class="card-header bg-warning text-dark">
+                                <h5 class="mb-0">Estratégia de Números Atrasados</h5>
+                            </div>
+                            <div class="card-body">
+                                <p>Esta estratégia foca nos números que estão há mais tempo sem serem sorteados.</p>
+                                <ul>
+                                    <li><strong>Números Recomendados:</strong> <span id="delayedNumbersRecommended">-</span></li>
+                                    <li><strong>Complementar com:</strong> <span id="delayedNumbersComplement">-</span></li>
+                                </ul>
+                                <button class="btn btn-outline-warning btn-sm mt-2 strategy-apply-btn" data-strategy="cold_numbers">
+                                    Aplicar Estratégia
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card shadow-sm strategy-card">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">Estratégia Otimizada por IA</h5>
+                            </div>
+                            <div class="card-body">
+                                <p>Esta estratégia utiliza algoritmos avançados para maximizar a probabilidade de prêmio total.</p>
+                                <ul>
+                                    <li><strong>Baseada em:</strong> Análise de padrões históricos</li>
+                                    <li><strong>Otimização:</strong> Equilíbrio, distribuição e sequências</li>
+                                </ul>
+                                <button class="btn btn-outline-success btn-sm mt-2 strategy-apply-btn" data-strategy="optimized">
+                                    Aplicar Estratégia
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectedLottery = "{{ selected_lottery }}";
+        
+        // Carregar estatísticas básicas
+        loadBasicStatistics(selectedLottery);
+        
+        // Carregar análise avançada
+        loadAdvancedAnalysis(selectedLottery);
+        
+        // Configurar botões de estratégia
+        document.querySelectorAll('.strategy-apply-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const strategy = this.getAttribute('data-strategy');
+                window.location.href = `/generate?lottery=${selectedLottery}&strategy=${strategy}`;
+            });
+        });
+        
+        // Configurar botão de geração otimizada
+        document.getElementById('generateOptimizedBtn').addEventListener('click', function() {
+            window.location.href = `/generate?lottery=${selectedLottery}&strategy=optimized`;
+        });
+    });
+    
+    function loadBasicStatistics(lottery) {
+        fetch(`/api/statistics/${lottery}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Erro ao carregar estatísticas:', data.error);
+                    return;
+                }
+                
+                // Renderizar grade de frequência
+                renderNumberGrid('frequencyGrid', data.frequency, 'frequency');
+                
+                // Renderizar grade de atraso
+                renderNumberGrid('delayGrid', data.delay, 'delay');
+                
+                // Renderizar gráficos
+                renderFrequencyChart(data.frequency);
+                renderDelayChart(data.delay);
+                
+                // Carregar últimos resultados
+                loadLastResults(lottery);
+            })
+            .catch(error => {
+                console.error('Erro ao carregar estatísticas:', error);
+            });
+    }
+    
+    function loadAdvancedAnalysis(lottery) {
+        fetch(`/api/detailed-analysis/${lottery}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Erro ao carregar análise avançada:', data.error);
+                    return;
+                }
+                
+                // Atualizar estatísticas gerais
+                document.getElementById('avgEvenValue').textContent = data.even_odd_distribution.common_even;
+                document.getElementById('avgOddValue').textContent = data.even_odd_distribution.common_odd;
+                document.getElementById('avgSumValue').textContent = Math.round(data.sum_statistics.average);
+                document.getElementById('avgSequencesValue').textContent = data.sequence_statistics.most_common;
+                
+                // Renderizar listas de números
+                renderNumbersList('hotNumbersList', data.hot_numbers, 'hot-number');
+                renderNumbersList('delayedNumbersList', data.most_delayed, 'delayed-number');
+                
+                // Renderizar gráficos
+                renderEvenOddChart(data.even_odd_distribution);
+                renderDecadeChart(data.decade_distribution);
+                renderSumRangeChart(data.sum_statistics);
+                
+                // Renderizar padrões
+                renderPatterns(data);
+                
+                // Renderizar recomendações
+                renderRecommendations(data.recommendations);
+                
+                // Atualizar estratégias
+                updateStrategyInfo(data);
+            })
+            .catch(error => {
+                console.error('Erro ao carregar análise avançada:', error);
+            });
+    }
+    
+    function loadLastResults(lottery) {
+        fetch(`/api/latest-results`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Erro ao carregar resultados:', data.error);
+                    return;
+                }
+                
+                // Encontrar resultado da loteria selecionada
+                const result = data.results.find(r => r.lottery_type === lottery);
+                if (!result) {
+                    console.error('Resultado não encontrado para a loteria:', lottery);
+                    return;
+                }
+                
+                // Renderizar último resultado
+                renderLastResult(result);
+            })
+            .catch(error => {
+                console.error('Erro ao carregar resultados:', error);
+            });
+    }
+    
+    function renderNumberGrid(containerId, data, type) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        // Determinar valores mínimo e máximo para normalização
+        const values = Object.values(data);
+        const minValue = Math.min(...values);
+        const maxValue = Math.max(...values);
+        const range = maxValue - minValue;
+        
+        // Determinar faixa de números com base no tipo de loteria
+        const lotteryType = "{{ selected_lottery }}";
+        let minNum = 1;
+        let maxNum = 60;
+        
+        switch (lotteryType) {
+            case 'megasena':
+                minNum = 1;
+                maxNum = 60;
+                break;
+            case 'lotofacil':
+                minNum = 1;
+                maxNum = 25;
+                break;
+            case 'quina':
+                minNum = 1;
+                maxNum = 80;
+                break;
+            case 'timemania':
+                minNum = 1;
+                maxNum = 80;
+                break;
+            case 'maismilionaria':
+                minNum = 1;
+                maxNum = 50;
+                break;
+        }
+        
+        // Criar células para cada número
+        for (let i = minNum; i <= maxNum; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'number-cell';
+            cell.textContent = i;
+            
+            // Adicionar valor
+            const valueSpan = document.createElement('span');
+            valueSpan.className = 'number-value';
+            valueSpan.textContent = data[i] || 0;
+            cell.appendChild(valueSpan);
+            
+            // Definir cor de fundo com base no valor normalizado
+            const value = data[i] || 0;
+            const normalizedValue = range > 0 ? (value - minValue) / range : 0;
+            
+            if (type === 'frequency') {
+                // Escala de cores para frequência (azul -> vermelho)
+                const r = Math.round(normalizedValue * 255);
+                const b = Math.round((1 - normalizedValue) * 255);
+                cell.style.backgroundColor = `rgb(${r}, 100, ${b})`;
+                cell.style.color = normalizedValue > 0.5 ? 'white' : 'black';
+            } else {
+                // Escala de cores para atraso (verde -> amarelo -> vermelho)
+                const r = Math.round(normalizedValue * 255);
+                const g = Math.round((1 - normalizedValue) * 255);
+                cell.style.backgroundColor = `rgb(${r}, ${g}, 0)`;
+                cell.style.color = normalizedValue > 0.5 ? 'white' : 'black';
+            }
+            
+            container.appendChild(cell);
+        }
+    }
+    
+    function renderFrequencyChart(data) {
+        const ctx = document.getElementById('frequencyChart');
+        if (!ctx) return;
+        
+        // Converter dados para formato do Chart.js
+        const labels = Object.keys(data).sort((a, b) => parseInt(a) - parseInt(b));
+        const values = labels.map(key => data[key] || 0);
+        
+        // Criar gráfico
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Frequência',
+                    data: values,
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderDelayChart(data) {
+        const ctx = document.getElementById('delayChart');
+        if (!ctx) return;
+        
+        // Converter dados para formato do Chart.js
+        const labels = Object.keys(data).sort((a, b) => parseInt(a) - parseInt(b));
+        const values = labels.map(key => data[key] || 0);
+        
+        // Criar gráfico
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Atraso',
+                    data: values,
+                    backgroundColor: 'rgba(255, 159, 64, 0.5)',
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderLastResult(result) {
+        const container = document.getElementById('lastResults');
+        if (!container) return;
+        
+        let html = `
+            <div class="alert alert-light">
+                <h5>Concurso ${result.concurso} (${formatDate(result.data)})</h5>
+                <div class="d-flex flex-wrap justify-content-center my-3">
+        `;
+        
+        // Adicionar dezenas
+        if (result.dezenas) {
+            result.dezenas.forEach(dezena => {
+                html += `<span class="lottery-ball ${result.lottery_type}">${dezena}</span>`;
+            });
+        }
+        
+        // Adicionar trevos para +Milionária
+        if (result.trevos) {
+            html += `<div class="ms-3">Trevos: `;
+            result.trevos.forEach(trevo => {
+                html += `<span class="lottery-trevo">${trevo}</span>`;
+            });
+            html += `</div>`;
+        }
+        
+        // Adicionar Time do Coração para Timemania
+        if (result.timeCoracao) {
+            html += `<div class="ms-3">Time do Coração: <strong>${result.timeCoracao}</strong></div>`;
+        }
+        
+        html += `
+                </div>
+                <div class="text-center">
+                    <strong>Próximo Concurso:</strong> ${result.proximoConcurso} 
+                    <strong>Data:</strong> ${formatDate(result.dataProximoConcurso)}
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+    }
+    
+    function renderNumbersList(containerId, numbers, className) {
+        const container = document.getElementById(containerId);
+        if (!container || !numbers) return;
+        
+        let html = '<div class="d-flex flex-wrap">';
+        
+        numbers.forEach(([number, value]) => {
+            html += `
+                <div class="me-3 mb-3 text-center">
+                    <div class="number-cell ${className} mx-auto" style="width: 40px; height: 40px;">
+                        ${number}
+                    </div>
+                    <small class="d-block mt-1">${value}</small>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    function renderEvenOddChart(data) {
+        const ctx = document.getElementById('evenOddChart');
+        if (!ctx || !data.distribution) return;
+        
+        // Preparar dados para o gráfico
+        const distribution = data.distribution;
+        const labels = [];
+        const evenValues = [];
+        const oddValues = [];
+        
+        distribution.forEach((pair, index) => {
+            labels.push(`Jogo ${index + 1}`);
+            evenValues.push(pair[0]);
+            oddValues.push(pair[1]);
+        });
+        
+        // Criar gráfico
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Pares',
+                        data: evenValues,
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Ímpares',
+                        data: oddValues,
+                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        stacked: true
+                    },
+                    x: {
+                        stacked: true
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderDecadeChart(data) {
+        const ctx = document.getElementById('decadeChart');
+        if (!ctx || !data.average) return;
+        
+        // Preparar dados para o gráfico
+        const average = data.average;
+        const labels = Object.keys(average);
+        const values = labels.map(key => average[key]);
+        
+        // Criar gráfico
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Média de Números por Dezena',
+                    data: values,
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderSumRangeChart(data) {
+        const ctx = document.getElementById('sumRangeChart');
+        if (!ctx || !data.most_common_range) return;
+        
+        // Criar gráfico de linha para a soma
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['Mínima', 'Média', 'Máxima'],
+                datasets: [{
+                    label: 'Soma dos Números',
+                    data: [data.min, data.average, data.max],
+                    backgroundColor: 'rgba(153, 102, 255, 0.5)',
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Soma: ${context.raw}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderPatterns(data) {
+        const container = document.getElementById('patternsList');
+        if (!container) return;
+        
+        let html = '';
+        
+        // Padrão de sequências
+        html += `
+            <div class="mb-3">
+                <span class="pattern-badge bg-primary text-white">Sequências</span>
+                Em média, os jogos têm <strong>${data.sequence_statistics.average.toFixed(1)}</strong> sequências de números consecutivos.
+                O mais comum é ter <strong>${data.sequence_statistics.most_common}</strong> sequências.
+            </div>
+        `;
+        
+        // Padrão de repetições
+        html += `
+            <div class="mb-3">
+                <span class="pattern-badge bg-success text-white">Repetições</span>
+                Em média, <strong>${data.repetition_statistics.average.toFixed(1)}</strong> números se repetem entre jogos consecutivos.
+            </div>
+        `;
+        
+        // Padrão de dezenas
+        html += `
+            <div class="mb-3">
+                <span class="pattern-badge bg-warning text-dark">Dezenas</span>
+                As dezenas mais utilizadas são: <strong>${data.decade_distribution.most_used.map(d => d[0]).join(', ')}</strong>
+            </div>
+        `;
+        
+        // Padrão de soma
+        html += `
+            <div class="mb-3">
+                <span class="pattern-badge bg-danger text-white">Soma</span>
+                A faixa de soma mais comum é <strong>${data.sum_statistics.most_common_range ? data.sum_statistics.most_common_range[0] : '-'}</strong>
+                com <strong>${data.sum_statistics.most_common_range ? data.sum_statistics.most_common_range[1] : '-'}</strong> ocorrências.
+            </div>
+        `;
+        
+        container.innerHTML = html;
+    }
+    
+    function renderRecommendations(recommendations) {
+        const container = document.getElementById('recommendationsList');
+        if (!container || !recommendations) return;
+        
+        let html = '';
+        
+        recommendations.forEach(recommendation => {
+            html += `
+                <div class="recommendation-item">
+                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                    ${recommendation}
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    }
+    
+    function updateStrategyInfo(data) {
+        // Estratégia de Equilíbrio
+        document.getElementById('balancedEvenOdd').textContent = 
+            `${data.even_odd_distribution.common_even} pares, ${data.even_odd_distribution.common_odd} ímpares`;
+        
+        document.getElementById('balancedDecades').textContent = 
+            data.decade_distribution.most_used.map(d => d[0]).join(', ');
+        
+        document.getElementById('balancedSum').textContent = 
+            Math.round(data.sum_statistics.average);
+        
+        // Estratégia de Números Quentes
+        document.getElementById('hotNumbersRecommended').textContent = 
+            data.hot_numbers.slice(0, 5).map(n => n[0]).join(', ');
+        
+        document.getElementById('hotNumbersComplement').textContent = 
+            'Alguns números de outras faixas para equilíbrio';
+        
+        // Estratégia de Números Atrasados
+        document.getElementById('delayedNumbersRecommended').textContent = 
+            data.most_delayed.slice(0, 5).map(n => n[0]).join(', ');
+        
+        document.getElementById('delayedNumbersComplement').textContent = 
+            'Alguns números frequentes para equilíbrio';
+    }
+    
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('pt-BR');
+    }
+</script>
+{% endblock %}

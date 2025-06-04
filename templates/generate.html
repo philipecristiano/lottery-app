@@ -1,0 +1,1024 @@
+{% extends 'base.html' %}
+
+{% block title %}Gerar Jogos - Loteria Inteligente{% endblock %}
+
+{% block extra_css %}
+<style>
+    .lottery-wheel {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 5px;
+        margin-bottom: 20px;
+    }
+    
+    .wheel-number {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 40px;
+        border-radius: 50%;
+        font-weight: bold;
+        border: 2px solid #ddd;
+        background-color: #f8f9fa;
+        transition: all 0.3s;
+    }
+    
+    .wheel-number.selected {
+        background-color: #0d6efd;
+        color: white;
+        border-color: #0a58ca;
+        transform: scale(1.1);
+    }
+    
+    .wheel-number.hot {
+        border-color: #dc3545;
+    }
+    
+    .wheel-number.cold {
+        border-color: #0dcaf0;
+    }
+    
+    .probability-bar {
+        height: 10px;
+        border-radius: 5px;
+        margin-top: 5px;
+        background: linear-gradient(to right, #dc3545, #ffc107, #20c997);
+    }
+    
+    .probability-marker {
+        width: 10px;
+        height: 20px;
+        background-color: #212529;
+        position: relative;
+        top: -15px;
+        border-radius: 2px;
+        transition: left 0.5s;
+    }
+    
+    .game-card {
+        border-radius: 10px;
+        overflow: hidden;
+        transition: transform 0.3s;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .game-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .game-numbers {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-bottom: 10px;
+    }
+    
+    .game-number {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 35px;
+        height: 35px;
+        border-radius: 50%;
+        font-weight: bold;
+        background-color: #0d6efd;
+        color: white;
+    }
+    
+    .strategy-selector {
+        margin-bottom: 20px;
+    }
+    
+    .strategy-card {
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: all 0.3s;
+    }
+    
+    .strategy-card.selected {
+        border-color: #0d6efd;
+        transform: translateY(-5px);
+    }
+    
+    .strategy-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .preview-container {
+        display: none;
+        margin-top: 20px;
+        padding: 20px;
+        border-radius: 10px;
+        background-color: #f8f9fa;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .preview-container.active {
+        display: block;
+    }
+    
+    .custom-params {
+        display: none;
+        margin-top: 15px;
+        padding: 15px;
+        border-radius: 8px;
+        background-color: #f8f9fa;
+    }
+    
+    .custom-params.active {
+        display: block;
+    }
+    
+    .prize-info {
+        background-color: #198754;
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    
+    .next-draw-info {
+        background-color: #0dcaf0;
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    
+    .suggestion-card {
+        border-left: 4px solid #20c997;
+        margin-top: 20px;
+    }
+    
+    .suggestion-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .suggestion-score {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-weight: bold;
+        background-color: #20c997;
+        color: white;
+    }
+    
+    .loading-spinner {
+        display: inline-block;
+        width: 2rem;
+        height: 2rem;
+        border: 0.25rem solid rgba(0, 0, 0, 0.1);
+        border-right-color: #0d6efd;
+        border-radius: 50%;
+        animation: spinner-border 0.75s linear infinite;
+    }
+    
+    @keyframes spinner-border {
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1>Gerar Jogos</h1>
+            <div class="dropdown">
+                <button class="btn btn-primary dropdown-toggle" type="button" id="lotteryDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    {{ selected_game.name }}
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="lotteryDropdown">
+                    {% for code, game in games.items() %}
+                    <li><a class="dropdown-item {% if code == selected_lottery %}active{% endif %}" href="{{ url_for('views.generate', lottery=code) }}">{{ game.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="prize-info">
+            <h4><i class="bi bi-cash-coin"></i> Prêmio Estimado</h4>
+            <h2 id="prizeValue">Carregando...</h2>
+            <p class="mb-0">Para o concurso <span id="contestNumber">-</span></p>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="next-draw-info">
+            <h4><i class="bi bi-calendar-event"></i> Próximo Sorteio</h4>
+            <h2 id="nextDrawDate">Carregando...</h2>
+            <p class="mb-0">Restam <span id="daysRemaining">-</span> dias</p>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Estratégia de Geração</h5>
+            </div>
+            <div class="card-body">
+                <div class="strategy-selector">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card strategy-card" data-strategy="random">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-shuffle fs-3 text-primary"></i>
+                                    <h6 class="mt-2">Aleatória</h6>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card strategy-card" data-strategy="hot_numbers">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-fire fs-3 text-danger"></i>
+                                    <h6 class="mt-2">Números Quentes</h6>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card strategy-card" data-strategy="cold_numbers">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-snow fs-3 text-info"></i>
+                                    <h6 class="mt-2">Números Frios</h6>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card strategy-card" data-strategy="last_5_avg">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-bar-chart fs-3 text-success"></i>
+                                    <h6 class="mt-2">Média dos Últimos 5</h6>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card strategy-card" data-strategy="custom_even_odd">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-sliders fs-3 text-warning"></i>
+                                    <h6 class="mt-2">Personalizada</h6>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card strategy-card" data-strategy="optimized">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-stars fs-3 text-success"></i>
+                                    <h6 class="mt-2">Otimizada por IA</h6>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="customEvenOddParams" class="custom-params">
+                    <h6>Configuração de Pares/Ímpares</h6>
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="form-group">
+                                <label for="evenCount">Números Pares</label>
+                                <input type="number" class="form-control" id="evenCount" min="0" value="0">
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="form-group">
+                                <label for="oddCount">Números Ímpares</label>
+                                <input type="number" class="form-control" id="oddCount" min="0" value="0">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info mt-2">
+                        <small>A soma deve ser igual a <span id="totalNumbers">{{ selected_game.numbers }}</span></small>
+                    </div>
+                </div>
+                
+                <div class="form-group mt-3">
+                    <label for="numGames">Quantidade de Jogos</label>
+                    <input type="number" class="form-control" id="numGames" min="1" max="15" value="1">
+                </div>
+                
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" id="autoVerifyCheck" checked>
+                    <label class="form-check-label" for="autoVerifyCheck">
+                        Verificar resultados automaticamente
+                    </label>
+                </div>
+                
+                <div class="d-grid gap-2 mt-4">
+                    <button id="previewBtn" class="btn btn-outline-primary">
+                        <i class="bi bi-eye"></i> Visualizar Antes de Gerar
+                    </button>
+                    <button id="generateBtn" class="btn btn-primary">
+                        <i class="bi bi-magic"></i> Gerar Jogos
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div id="previewContainer" class="preview-container">
+            <h4 class="mb-3">Visualização Prévia</h4>
+            
+            <div id="previewLoading" class="text-center py-5">
+                <div class="loading-spinner mb-3"></div>
+                <p>Gerando visualização prévia...</p>
+            </div>
+            
+            <div id="previewContent" style="display: none;">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Números Selecionados</h5>
+                        <div id="previewNumbers" class="game-numbers"></div>
+                        
+                        <div class="mt-3">
+                            <h6>Probabilidade Relativa</h6>
+                            <div class="probability-bar">
+                                <div id="probabilityMarker" class="probability-marker"></div>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <small>Baixa</small>
+                                <small>Média</small>
+                                <small>Alta</small>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <h6>Estatísticas</h6>
+                            <ul class="list-unstyled">
+                                <li><strong>Pares/Ímpares:</strong> <span id="previewEvenOdd">-</span></li>
+                                <li><strong>Soma:</strong> <span id="previewSum">-</span></li>
+                                <li><strong>Distribuição:</strong> <span id="previewDistribution">-</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h5>Visualização no Volante</h5>
+                        <div id="previewWheel" class="lottery-wheel"></div>
+                    </div>
+                </div>
+                
+                <div id="optimizedSuggestions" class="mt-4">
+                    <h5 class="suggestion-title">
+                        <i class="bi bi-lightbulb-fill text-warning"></i>
+                        Sugestões Otimizadas
+                    </h5>
+                    <p>Com base na análise de probabilidade, estas são sugestões com maior chance de prêmio total:</p>
+                    
+                    <div id="suggestionsLoading" class="text-center py-3">
+                        <div class="loading-spinner mb-2"></div>
+                        <p>Calculando sugestões otimizadas...</p>
+                    </div>
+                    
+                    <div id="suggestionsList"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="generatedGamesContainer">
+            <h4 class="mb-3">Jogos Gerados</h4>
+            <div id="generatedGamesLoading" style="display: none;" class="text-center py-5">
+                <div class="loading-spinner mb-3"></div>
+                <p>Gerando jogos...</p>
+            </div>
+            <div id="generatedGames"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectedLottery = "{{ selected_lottery }}";
+        const totalNumbers = {{ selected_game.numbers }};
+        let selectedStrategy = 'random';
+        let generatedGames = [];
+        
+        // Carregar informações do prêmio e próximo sorteio
+        loadPrizeInfo(selectedLottery);
+        
+        // Configurar seleção de estratégia
+        document.querySelectorAll('.strategy-card').forEach(card => {
+            card.addEventListener('click', function() {
+                // Remover seleção anterior
+                document.querySelectorAll('.strategy-card').forEach(c => {
+                    c.classList.remove('selected');
+                });
+                
+                // Selecionar nova estratégia
+                this.classList.add('selected');
+                selectedStrategy = this.getAttribute('data-strategy');
+                
+                // Mostrar/esconder parâmetros personalizados
+                document.querySelectorAll('.custom-params').forEach(params => {
+                    params.classList.remove('active');
+                });
+                
+                if (selectedStrategy === 'custom_even_odd') {
+                    document.getElementById('customEvenOddParams').classList.add('active');
+                }
+                
+                // Aplicar estratégia automaticamente
+                applyStrategy(selectedStrategy);
+            });
+        });
+        
+        // Selecionar estratégia aleatória por padrão
+        document.querySelector('.strategy-card[data-strategy="random"]').classList.add('selected');
+        
+        // Configurar botão de visualização prévia
+        document.getElementById('previewBtn').addEventListener('click', function() {
+            previewGame();
+        });
+        
+        // Configurar botão de geração
+        document.getElementById('generateBtn').addEventListener('click', function() {
+            generateGames();
+        });
+        
+        // Configurar campos de pares/ímpares
+        document.getElementById('evenCount').addEventListener('input', updateOddCount);
+        document.getElementById('oddCount').addEventListener('input', updateEvenCount);
+        
+        function updateOddCount() {
+            const evenCount = parseInt(document.getElementById('evenCount').value) || 0;
+            const oddCount = totalNumbers - evenCount;
+            document.getElementById('oddCount').value = oddCount >= 0 ? oddCount : 0;
+        }
+        
+        function updateEvenCount() {
+            const oddCount = parseInt(document.getElementById('oddCount').value) || 0;
+            const evenCount = totalNumbers - oddCount;
+            document.getElementById('evenCount').value = evenCount >= 0 ? evenCount : 0;
+        }
+        
+        function loadPrizeInfo(lottery) {
+            fetch(`/api/latest-results`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Erro ao carregar resultados:', data.error);
+                        return;
+                    }
+                    
+                    // Encontrar resultado da loteria selecionada
+                    const result = data.results.find(r => r.lottery_type === lottery);
+                    if (!result) {
+                        console.error('Resultado não encontrado para a loteria:', lottery);
+                        return;
+                    }
+                    
+                    // Atualizar informações do prêmio
+                    document.getElementById('prizeValue').textContent = formatCurrency(result.valorEstimadoProximoConcurso || 0);
+                    document.getElementById('contestNumber').textContent = result.proximoConcurso || '-';
+                    
+                    // Atualizar informações do próximo sorteio
+                    const nextDrawDate = result.dataProximoConcurso ? new Date(result.dataProximoConcurso) : null;
+                    if (nextDrawDate) {
+                        document.getElementById('nextDrawDate').textContent = formatDate(nextDrawDate);
+                        
+                        // Calcular dias restantes
+                        const today = new Date();
+                        const diffTime = nextDrawDate - today;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        document.getElementById('daysRemaining').textContent = diffDays > 0 ? diffDays : 'Hoje';
+                    } else {
+                        document.getElementById('nextDrawDate').textContent = 'Não disponível';
+                        document.getElementById('daysRemaining').textContent = '-';
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar informações do prêmio:', error);
+                });
+        }
+        
+        function applyStrategy(strategy) {
+            // Limpar jogos gerados anteriormente
+            document.getElementById('generatedGames').innerHTML = '';
+            
+            // Mostrar container de visualização prévia
+            document.getElementById('previewContainer').classList.add('active');
+            
+            // Mostrar loading e esconder conteúdo
+            document.getElementById('previewLoading').style.display = 'block';
+            document.getElementById('previewContent').style.display = 'none';
+            
+            // Gerar visualização prévia com base na estratégia selecionada
+            previewGame();
+        }
+        
+        function previewGame() {
+            // Mostrar loading e esconder conteúdo
+            document.getElementById('previewLoading').style.display = 'block';
+            document.getElementById('previewContent').style.display = 'none';
+            
+            // Mostrar container de visualização prévia
+            document.getElementById('previewContainer').classList.add('active');
+            
+            // Preparar dados para a API
+            const data = {
+                lottery: selectedLottery,
+                strategy: selectedStrategy
+            };
+            
+            // Adicionar parâmetros específicos para estratégia personalizada
+            if (selectedStrategy === 'custom_even_odd') {
+                data.even_count = parseInt(document.getElementById('evenCount').value) || 0;
+                data.odd_count = parseInt(document.getElementById('oddCount').value) || 0;
+                
+                // Validar soma
+                if (data.even_count + data.odd_count !== totalNumbers) {
+                    alert(`A soma de números pares e ímpares deve ser igual a ${totalNumbers}`);
+                    document.getElementById('previewLoading').style.display = 'none';
+                    return;
+                }
+            }
+            
+            // Chamar API para gerar visualização prévia
+            fetch('/api/preview-game', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Erro ao gerar visualização prévia:', data.error);
+                    alert('Erro ao gerar visualização prévia: ' + data.error);
+                    document.getElementById('previewLoading').style.display = 'none';
+                    return;
+                }
+                
+                // Esconder loading e mostrar conteúdo
+                document.getElementById('previewLoading').style.display = 'none';
+                document.getElementById('previewContent').style.display = 'block';
+                
+                // Exibir visualização prévia
+                renderPreview(data.preview_game);
+                
+                // Mostrar loading de sugestões
+                document.getElementById('suggestionsLoading').style.display = 'block';
+                document.getElementById('suggestionsList').innerHTML = '';
+                
+                // Gerar sugestões otimizadas
+                generateOptimizedSuggestions();
+            })
+            .catch(error => {
+                console.error('Erro ao gerar visualização prévia:', error);
+                alert('Erro ao gerar visualização prévia. Tente novamente.');
+                document.getElementById('previewLoading').style.display = 'none';
+            });
+        }
+        
+        function renderPreview(game) {
+            // Renderizar números
+            const numbersContainer = document.getElementById('previewNumbers');
+            numbersContainer.innerHTML = '';
+            
+            game.numbers.forEach(number => {
+                const numberElement = document.createElement('div');
+                numberElement.className = 'game-number';
+                numberElement.textContent = number;
+                numbersContainer.appendChild(numberElement);
+            });
+            
+            // Renderizar volante
+            renderWheel('previewWheel', game.numbers);
+            
+            // Atualizar estatísticas
+            const evenCount = game.numbers.filter(n => n % 2 === 0).length;
+            const oddCount = game.numbers.length - evenCount;
+            document.getElementById('previewEvenOdd').textContent = `${evenCount} pares, ${oddCount} ímpares`;
+            
+            document.getElementById('previewSum').textContent = game.numbers.reduce((a, b) => a + b, 0);
+            
+            // Distribuição por dezenas
+            const decades = {};
+            game.numbers.forEach(num => {
+                const decade = Math.floor(num / 10) * 10;
+                decades[decade] = (decades[decade] || 0) + 1;
+            });
+            
+            let distributionText = '';
+            for (const decade in decades) {
+                if (decades[decade] > 0) {
+                    distributionText += `${decade}-${parseInt(decade) + 9}: ${decades[decade]}, `;
+                }
+            }
+            document.getElementById('previewDistribution').textContent = distributionText.slice(0, -2);
+            
+            // Atualizar marcador de probabilidade
+            if (game.probability && game.probability.relative_score) {
+                const score = game.probability.relative_score;
+                const position = `${score}%`;
+                document.getElementById('probabilityMarker').style.left = position;
+            }
+        }
+        
+        function renderWheel(containerId, selectedNumbers) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            // Determinar faixa de números com base no tipo de loteria
+            let minNum = 1;
+            let maxNum = 60;
+            
+            switch (selectedLottery) {
+                case 'megasena':
+                    minNum = 1;
+                    maxNum = 60;
+                    break;
+                case 'lotofacil':
+                    minNum = 1;
+                    maxNum = 25;
+                    break;
+                case 'quina':
+                    minNum = 1;
+                    maxNum = 80;
+                    break;
+                case 'timemania':
+                    minNum = 1;
+                    maxNum = 80;
+                    break;
+                case 'maismilionaria':
+                    minNum = 1;
+                    maxNum = 50;
+                    break;
+            }
+            
+            // Criar células para cada número
+            for (let i = minNum; i <= maxNum; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'wheel-number';
+                cell.textContent = i;
+                
+                // Marcar números selecionados
+                if (selectedNumbers.includes(i)) {
+                    cell.classList.add('selected');
+                }
+                
+                container.appendChild(cell);
+            }
+        }
+        
+        function generateOptimizedSuggestions() {
+            // Chamar API para gerar sugestões otimizadas
+            fetch('/api/generate-games', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    lottery: selectedLottery,
+                    strategy: 'optimized',
+                    num_games: 3,
+                    save_to_history: false
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Esconder loading de sugestões
+                document.getElementById('suggestionsLoading').style.display = 'none';
+                
+                if (data.error) {
+                    console.error('Erro ao gerar sugestões otimizadas:', data.error);
+                    return;
+                }
+                
+                // Renderizar sugestões
+                renderSuggestions(data.games);
+            })
+            .catch(error => {
+                console.error('Erro ao gerar sugestões otimizadas:', error);
+                document.getElementById('suggestionsLoading').style.display = 'none';
+            });
+        }
+        
+        function renderSuggestions(games) {
+            const container = document.getElementById('suggestionsList');
+            container.innerHTML = '';
+            
+            games.forEach((game, index) => {
+                const suggestionCard = document.createElement('div');
+                suggestionCard.className = 'card suggestion-card mb-3';
+                
+                const cardBody = document.createElement('div');
+                cardBody.className = 'card-body';
+                
+                // Título com pontuação
+                const title = document.createElement('div');
+                title.className = 'd-flex justify-content-between align-items-center mb-3';
+                
+                const titleText = document.createElement('h6');
+                titleText.className = 'mb-0';
+                titleText.textContent = `Sugestão ${index + 1}`;
+                
+                const score = document.createElement('span');
+                score.className = 'suggestion-score';
+                score.textContent = `${Math.round(game.optimization_score || 0)}%`;
+                
+                title.appendChild(titleText);
+                title.appendChild(score);
+                
+                // Números
+                const numbersContainer = document.createElement('div');
+                numbersContainer.className = 'game-numbers';
+                
+                game.numbers.forEach(number => {
+                    const numberElement = document.createElement('div');
+                    numberElement.className = 'game-number';
+                    numberElement.style.width = '30px';
+                    numberElement.style.height = '30px';
+                    numberElement.style.fontSize = '0.9rem';
+                    numberElement.textContent = number;
+                    numbersContainer.appendChild(numberElement);
+                });
+                
+                // Botão para aplicar sugestão
+                const applyBtn = document.createElement('button');
+                applyBtn.className = 'btn btn-sm btn-outline-success mt-2';
+                applyBtn.innerHTML = '<i class="bi bi-check-circle"></i> Aplicar Esta Sugestão';
+                applyBtn.addEventListener('click', function() {
+                    renderPreview(game);
+                });
+                
+                cardBody.appendChild(title);
+                cardBody.appendChild(numbersContainer);
+                cardBody.appendChild(applyBtn);
+                
+                suggestionCard.appendChild(cardBody);
+                container.appendChild(suggestionCard);
+            });
+        }
+        
+        function generateGames() {
+            // Mostrar loading
+            document.getElementById('generatedGamesLoading').style.display = 'block';
+            document.getElementById('generatedGames').innerHTML = '';
+            
+            // Preparar dados para a API
+            const data = {
+                lottery: selectedLottery,
+                strategy: selectedStrategy,
+                num_games: parseInt(document.getElementById('numGames').value) || 1,
+                auto_verify: document.getElementById('autoVerifyCheck').checked
+            };
+            
+            // Adicionar parâmetros específicos para estratégia personalizada
+            if (selectedStrategy === 'custom_even_odd') {
+                data.even_count = parseInt(document.getElementById('evenCount').value) || 0;
+                data.odd_count = parseInt(document.getElementById('oddCount').value) || 0;
+                
+                // Validar soma
+                if (data.even_count + data.odd_count !== totalNumbers) {
+                    alert(`A soma de números pares e ímpares deve ser igual a ${totalNumbers}`);
+                    document.getElementById('generatedGamesLoading').style.display = 'none';
+                    return;
+                }
+            }
+            
+            // Chamar API para gerar jogos
+            fetch('/api/generate-games', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Esconder loading
+                document.getElementById('generatedGamesLoading').style.display = 'none';
+                
+                if (data.error) {
+                    console.error('Erro ao gerar jogos:', data.error);
+                    alert('Erro ao gerar jogos: ' + data.error);
+                    return;
+                }
+                
+                // Salvar jogos gerados
+                generatedGames = data.games;
+                
+                // Esconder visualização prévia
+                document.getElementById('previewContainer').classList.remove('active');
+                
+                // Renderizar jogos gerados
+                renderGeneratedGames(data.games);
+            })
+            .catch(error => {
+                console.error('Erro ao gerar jogos:', error);
+                alert('Erro ao gerar jogos. Tente novamente.');
+                document.getElementById('generatedGamesLoading').style.display = 'none';
+            });
+        }
+        
+        function renderGeneratedGames(games) {
+            const container = document.getElementById('generatedGames');
+            container.innerHTML = '';
+            
+            games.forEach((game, index) => {
+                const gameCard = document.createElement('div');
+                gameCard.className = 'card game-card';
+                
+                const cardHeader = document.createElement('div');
+                cardHeader.className = 'card-header bg-primary text-white';
+                cardHeader.innerHTML = `<h5 class="mb-0">Jogo ${index + 1}</h5>`;
+                
+                const cardBody = document.createElement('div');
+                cardBody.className = 'card-body';
+                
+                // Criar duas colunas
+                const row = document.createElement('div');
+                row.className = 'row';
+                
+                // Coluna da esquerda: números e estatísticas
+                const leftCol = document.createElement('div');
+                leftCol.className = 'col-md-6';
+                
+                // Números
+                const numbersContainer = document.createElement('div');
+                numbersContainer.className = 'game-numbers';
+                
+                game.numbers.forEach(number => {
+                    const numberElement = document.createElement('div');
+                    numberElement.className = 'game-number';
+                    numberElement.textContent = number;
+                    numbersContainer.appendChild(numberElement);
+                });
+                
+                // Adicionar trevos para +Milionária
+                if (game.trevos) {
+                    const trevosContainer = document.createElement('div');
+                    trevosContainer.className = 'mt-2';
+                    trevosContainer.innerHTML = '<strong>Trevos:</strong> ';
+                    
+                    game.trevos.forEach(trevo => {
+                        const trevoElement = document.createElement('span');
+                        trevoElement.className = 'badge bg-success me-1';
+                        trevoElement.textContent = trevo;
+                        trevosContainer.appendChild(trevoElement);
+                    });
+                    
+                    leftCol.appendChild(trevosContainer);
+                }
+                
+                // Adicionar Time do Coração para Timemania
+                if (game.time_coracao) {
+                    const timeContainer = document.createElement('div');
+                    timeContainer.className = 'mt-2';
+                    timeContainer.innerHTML = `<strong>Time do Coração:</strong> <span class="badge bg-warning text-dark">${game.time_coracao}</span>`;
+                    leftCol.appendChild(timeContainer);
+                }
+                
+                // Estatísticas
+                const statsContainer = document.createElement('div');
+                statsContainer.className = 'mt-3';
+                
+                // Calcular estatísticas
+                const evenCount = game.numbers.filter(n => n % 2 === 0).length;
+                const oddCount = game.numbers.length - evenCount;
+                const sum = game.numbers.reduce((a, b) => a + b, 0);
+                
+                statsContainer.innerHTML = `
+                    <h6>Estatísticas</h6>
+                    <ul class="list-unstyled">
+                        <li><strong>Pares/Ímpares:</strong> ${evenCount} pares, ${oddCount} ímpares</li>
+                        <li><strong>Soma:</strong> ${sum}</li>
+                        <li><strong>Estratégia:</strong> ${getStrategyName(game.strategy)}</li>
+                    </ul>
+                `;
+                
+                // Probabilidade
+                const probabilityContainer = document.createElement('div');
+                probabilityContainer.className = 'mt-3';
+                probabilityContainer.innerHTML = `
+                    <h6>Probabilidade Relativa</h6>
+                    <div class="probability-bar">
+                        <div class="probability-marker" style="left: ${game.optimization_score || 50}%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <small>Baixa</small>
+                        <small>Média</small>
+                        <small>Alta</small>
+                    </div>
+                `;
+                
+                leftCol.appendChild(numbersContainer);
+                leftCol.appendChild(statsContainer);
+                leftCol.appendChild(probabilityContainer);
+                
+                // Coluna da direita: volante
+                const rightCol = document.createElement('div');
+                rightCol.className = 'col-md-6';
+                
+                const wheelTitle = document.createElement('h6');
+                wheelTitle.textContent = 'Visualização no Volante';
+                rightCol.appendChild(wheelTitle);
+                
+                const wheelContainer = document.createElement('div');
+                wheelContainer.className = 'lottery-wheel';
+                rightCol.appendChild(wheelContainer);
+                
+                // Renderizar volante
+                renderWheelInElement(wheelContainer, game.numbers);
+                
+                // Adicionar colunas à linha
+                row.appendChild(leftCol);
+                row.appendChild(rightCol);
+                
+                // Adicionar linha ao corpo do card
+                cardBody.appendChild(row);
+                
+                // Adicionar cabeçalho e corpo ao card
+                gameCard.appendChild(cardHeader);
+                gameCard.appendChild(cardBody);
+                
+                // Adicionar card ao container
+                container.appendChild(gameCard);
+            });
+        }
+        
+        function renderWheelInElement(container, selectedNumbers) {
+            // Determinar faixa de números com base no tipo de loteria
+            let minNum = 1;
+            let maxNum = 60;
+            
+            switch (selectedLottery) {
+                case 'megasena':
+                    minNum = 1;
+                    maxNum = 60;
+                    break;
+                case 'lotofacil':
+                    minNum = 1;
+                    maxNum = 25;
+                    break;
+                case 'quina':
+                    minNum = 1;
+                    maxNum = 80;
+                    break;
+                case 'timemania':
+                    minNum = 1;
+                    maxNum = 80;
+                    break;
+                case 'maismilionaria':
+                    minNum = 1;
+                    maxNum = 50;
+                    break;
+            }
+            
+            // Criar células para cada número
+            for (let i = minNum; i <= maxNum; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'wheel-number';
+                cell.textContent = i;
+                
+                // Marcar números selecionados
+                if (selectedNumbers.includes(i)) {
+                    cell.classList.add('selected');
+                }
+                
+                container.appendChild(cell);
+            }
+        }
+        
+        function getStrategyName(strategy) {
+            const strategies = {
+                'random': 'Aleatória',
+                'hot_numbers': 'Números Quentes',
+                'cold_numbers': 'Números Frios',
+                'last_5_avg': 'Média dos Últimos 5',
+                'custom_even_odd': 'Personalizada (Pares/Ímpares)',
+                'optimized': 'Otimizada por IA'
+            };
+            
+            return strategies[strategy] || strategy;
+        }
+        
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+        
+        function formatDate(date) {
+            return new Intl.DateTimeFormat('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            }).format(date);
+        }
+    });
+</script>
+{% endblock %}
