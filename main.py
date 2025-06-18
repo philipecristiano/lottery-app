@@ -1,21 +1,18 @@
-# No início do arquivo, adicione:
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 
-# Certifique-se que a definição do app esteja assim:
-app = Flask(__name__, 
-            static_folder='static',
-            template_folder='templates')
+app = Flask(__name__)
 
-# No final do arquivo, substitua qualquer bloco if __name__ == "__main__" por:
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
-# E adicione esta função para o Vercel:
 @app.route('/')
 def home():
     return render_template('index.html')
-            if __name__ == "__main__":
-                        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
+@app.route('/<path:path>')
+def static_file(path):
+    return send_from_directory('.', path)
 
+# Adicione aqui as outras rotas do seu aplicativo
+
+# Para desenvolvimento local
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
